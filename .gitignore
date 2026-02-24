@@ -137,3 +137,16 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# AWS CDK
+cdk.out/
+cdk.context.json
+.aws/
+*.pem
+
+# AWS CLI installer
+awscliv2.zip
+
+# OS
+.DS_Store
+Thumbs.db
