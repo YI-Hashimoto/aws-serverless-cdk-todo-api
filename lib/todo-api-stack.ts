@@ -12,6 +12,7 @@ import * as path from "path";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import * as cognito from "aws-cdk-lib/aws-cognito";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
 
 export class TodoApiStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -29,7 +30,7 @@ export class TodoApiStack extends Stack {
     const api = new apigw.RestApi(this, "TodoApi", {
       restApiName: "TodoApi",
       defaultCorsPreflightOptions: {
-        allowOrigins: apigw.Cors.ALL_ORIGINS,
+        allowOrigins: ["http://localhost:3000"],
         allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allowHeaders: ["Content-Type", "Authorization"],
       },
@@ -41,7 +42,7 @@ export class TodoApiStack extends Stack {
     // パスワード管理、ハッシュ化、JWT発効まで自動
     const userPool = new cognito.UserPool(this, "TodoUserPool", {
       userPoolName: "TodoUserPool", // ユーザープール名
-      selfSignUpEnabled: false, // ユーザー自身でサインアップ不可（管理者作成想定）
+      selfSignUpEnabled: true, // ユーザー自身でサインアップできるようにする
       signInAliases: { email: true }, // メールアドレスでログインできるようにする
       passwordPolicy: {
         // パスワードポリシーの設定
@@ -62,8 +63,26 @@ export class TodoApiStack extends Stack {
         userPassword: true, // パスワード認証を有効化
         userSrp: true, // SRP認証を有効化
       },
+      oAuth: {
+        flows: {
+          authorizationCodeGrant: true, // 認可コードグラントフローを有効化
+        },
+        scopes: [
+          cognito.OAuthScope.OPENID,
+          cognito.OAuthScope.EMAIL,
+          cognito.OAuthScope.PROFILE,
+        ], // OpenID Connectとメールスコープを指定
+        callbackUrls: ["http://localhost:3000/auth/callback"], // 認証後のリダイレクトURL（フロントエンドのURLを指定）
+        logoutUrls: ["http://localhost:3000/"], // ログアウト後のリダイレクトURL（フロントエンドのURLを指定）
+      },
       accessTokenValidity: Duration.minutes(60), // アクセストークンの有効期限を60分に設定
       idTokenValidity: Duration.minutes(60), // IDトークンの有効期限を60分に設定
+    });
+
+    // Domain (Cognitoが提供するホストドメインを使用してユーザープールにドメインを設定)
+    const domainPrefix = "todo-hosted-ui"; // ドメインプレフィックスをアカウントIDとリージョンを組み合わせて一意にする
+    userPool.addDomain("TodoHostedDomain", {
+      cognitoDomain: { domainPrefix }, // Cognitoが提供するホストドメインを使用
     });
 
     // Groups (ユーザーのグループ分け、例: 管理者と一般ユーザー)
@@ -105,6 +124,7 @@ export class TodoApiStack extends Stack {
         runtime: Runtime.NODEJS_20_X,
         entry: path.join(projectRoot, "lambdas", "src", "handlers", entry),
         handler: "handler",
+        logRetention: RetentionDays.ONE_WEEK,
         environment: {
           TABLE_NAME: table.tableName,
         },
@@ -158,6 +178,13 @@ export class TodoApiStack extends Stack {
     });
 
     new CfnOutput(this, "ApiUrl", { value: api.url });
+    new CfnOutput(this, "CognitoUserPoolId", { value: userPool.userPoolId });
+    new CfnOutput(this, "CognitoUserPoolClientId", {
+      value: userPoolClient.userPoolClientId,
+    });
+    new CfnOutput(this, "CognitoHostedDomainUrl", {
+      value: `https://${domainPrefix}.auth.${this.region}.amazoncognito.com`,
+    });
     new CfnOutput(this, "TableName", { value: table.tableName });
   }
 }
