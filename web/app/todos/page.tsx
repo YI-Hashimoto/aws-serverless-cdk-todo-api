@@ -1,90 +1,67 @@
-"use client";
+"use client"; // クライアントコンポーネントであることを明示するためのディレクティブ
 
-import { useState } from "react";
+// ここでは、ユーザーがTodoを作成するためのフォームを提供し、APIにリクエストを送信して結果を表示するシンプルなUIを実装しています。
+// APIリクエストにはfetchを使用し、レスポンスの成功/失敗に応じて適切なメッセージやデータを表示します。
 
-type CreateTodoResponse = {
-  todoId: string;
-  title: string;
-  completed: boolean;
-  dueDate?: string;
+// ReactのuseStateフックを使用して、フォームの入力値やAPIからのレスポンス、エラーメッセージなどの状態を管理
+import { useEffect, useState } from "react";
+
+// Todopオブジェクトを定義
+type Todo = {
+  todoId: string; // Todoの識別子
+  title: string; // タイトル
+  completed: boolean; // ステータス
+  dueDate?: string; // 期限日（オプション）
 };
 
+const apiUrl = process.env.NEXT_PUBLIC_API_BASE!; // APIのURLを環境変数から取得
+
+// 画面コンポーネント
 export default function TodosPage() {
-  const [title, setTitle] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [result, setResult] = useState<CreateTodoResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Todoのリストを管理する状態
+  // ジェネリクスにより、todosがTodoオブジェクトの配列であることを指定
+  // 初期値は空白の配列
+  const [todos, setTodos] = useState<Todo[]>([]);
 
-  const createTodo = async () => {
-    setError(null);
-    setResult(null);
+  // コンポーネントの最初の描画後に一度だけ実行される処理
+  // 内部のfetchTodos関数は、APIからTodoのリストを取得し、状態にセットする非同期関数
+  useEffect(() => {
+    const fetchTodos = async () => {
+      try {
+        const token = localStorage.getItem("idToken"); // ローカルストレージから認証トークンを所得
+        const res = await fetch(
+          // APIエンドポイントにリクエストを送信
+          `${apiUrl}todos`,
+          {
+            headers: {
+              // ヘッダーに認証トークンを付与
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE!;
-    const idToken = localStorage.getItem("id_token");
-
-    if (!idToken) {
-      setError("トークンがありません。ログインし直してください。");
-      return;
-    }
-
-    const res = await fetch(`${apiBase}/todos`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // ✅ API Gateway側の設定により Bearer が必要なことが多い
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        title,
-        dueDate: dueDate || undefined,
-      }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      setError(`API error: ${res.status} ${text}`);
-      return;
-    }
-
-    const data = (await res.json()) as CreateTodoResponse;
-    setResult(data);
-    setTitle("");
-    setDueDate("");
-  };
+        if (!res.ok) {
+          throw new Error(`API request failed with status ${res.status}`); // レスポンスが成功でない場合はエラーをスロー
+        }
+        const data = await res.json();
+        setTodos(data.items); // APIから取得したTodoのリストを状態にセット
+      } catch (error) {
+        console.error("Error fetching todos:", error); // エラーが発生した場合はコンソールにエラーメッセージを表示
+      }
+    };
+    fetchTodos(); // fetchTodos関数を呼び出してAPIからデータを取得
+  }, []); // 依存配列が空のため、fetchTodosはコンポーネントの最初の描画後に一度だけ実行される
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Create Todo</h1>
-
-      <div style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-        <label>
-          Title
-          <input value={title} onChange={(e) => setTitle(e.target.value)} />
-        </label>
-
-        <label>
-          Due Date (YYYY-MM-DD)
-          <input
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            placeholder="2026-02-28"
-          />
-        </label>
-
-        <button onClick={createTodo} disabled={!title.trim()}>
-          登録
-        </button>
-      </div>
-
-      {error && (
-        <pre style={{ marginTop: 16, whiteSpace: "pre-wrap" }}>{error}</pre>
-      )}
-
-      {result && (
-        <pre style={{ marginTop: 16, whiteSpace: "pre-wrap" }}>
-          {JSON.stringify(result, null, 2)}
-        </pre>
-      )}
-    </main>
+    <div>
+      <h1>Todo List</h1>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.todoId}>
+            {todo.title} - {todo.completed ? "Completed" : "Pending"}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

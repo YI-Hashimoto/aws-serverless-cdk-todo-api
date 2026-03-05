@@ -1,27 +1,36 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
-export default function AuthCallbackPage() {
+export default function CallbackPage() {
   const router = useRouter();
-  const params = useSearchParams();
 
   useEffect(() => {
-    (async () => {
+    const run = async () => {
+      const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
-      if (!code) return;
-
-      const domain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN!;
-      const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
-      const redirectUri = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI!;
-      const tokenUrl = `${domain}/oauth2/token`;
+      if (!code) {
+        console.error("No code in callback URL");
+        return;
+      }
 
       const verifier = sessionStorage.getItem("pkce_verifier");
       if (!verifier) {
-        console.error("PKCE verifier not found. Please login again.");
+        console.error("Missing PKCE verifier. Start login again.");
         return;
       }
+
+      const domain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN;
+      const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+      const redirectUri = process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI;
+
+      if (!domain || !clientId || !redirectUri) {
+        console.error("Missing env", { domain, clientId, redirectUri });
+        return;
+      }
+
+      const tokenUrl = `${domain.replace(/\/$/, "")}/oauth2/token`;
 
       const body = new URLSearchParams({
         grant_type: "authorization_code",
@@ -39,22 +48,28 @@ export default function AuthCallbackPage() {
 
       if (!res.ok) {
         const text = await res.text();
-        console.error("token exchange failed:", res.status, text);
+        console.error("Token exchange failed:", res.status, text);
         return;
       }
 
-      const tokens = await res.json();
-      localStorage.setItem("id_token", tokens.id_token);
-      localStorage.setItem("access_token", tokens.access_token);
+      const token = await res.json();
+      if (!token.access_token || !token.id_token) {
+        console.error("Unexpected token response:", token);
+        return;
+      }
 
-      sessionStorage.removeItem("pkce_verifier");
+      // 保存（APIには access_token を使うのが一般的）
+      localStorage.setItem("idToken", token.id_token ?? "");
+      localStorage.setItem("accessToken", token.access_token ?? "");
+      if (token.refresh_token)
+        localStorage.setItem("refreshToken", token.refresh_token);
+
+      // クエリを消して /todos へ
       router.replace("/todos");
-    })();
-  }, [params, router]);
+    };
 
-  return (
-    <main style={{ padding: 24 }}>
-      <h1>Signing in...</h1>
-    </main>
-  );
+    run();
+  }, [router]);
+
+  return <div>Signing in...</div>;
 }

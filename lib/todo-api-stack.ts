@@ -186,5 +186,27 @@ export class TodoApiStack extends Stack {
       value: `https://${domainPrefix}.auth.${this.region}.amazoncognito.com`,
     });
     new CfnOutput(this, "TableName", { value: table.tableName });
+
+    // API GatewayのレスポンスにCORSヘッダーを追加（認証エラーなども含む全てのレスポンスに対してCORSを許可する）
+    // 4XXエラーのレスポンスにCORSヘッダーを追加
+    api.addGatewayResponse("Default4xx", {
+      type: apigw.ResponseType.DEFAULT_4XX,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE,OPTIONS'",
+      },
+    });
+
+    // API GatewayのレスポンスにCORSヘッダーを追加（認証エラーなども含む全てのレスポンスに対してCORSを許可する）
+    // 認証エラーなども含む全てのレスポンスに対してCORSを許可するため、4xxと5xxの両方に同様のレスポンスを追加
+    api.addGatewayResponse("Default5xx", {
+      type: apigw.ResponseType.DEFAULT_5XX,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE,OPTIONS'",
+      },
+    });
   }
 }
